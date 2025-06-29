@@ -1,67 +1,50 @@
 <?php
-// Error and input variables
-$nameErr = $emailErr = $ageErr = $pwdErr = "";
-$name = $email = $age = $pwd = "";
+session_start();
 
-// Handle form submission
+$emailErr = $pwdErr = "";
+$email = $pwd = "";
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
-    
-    // Validate email
     if (empty($_POST["email"])) {
         $emailErr = "Email is required";
     } else {
         $email = htmlspecialchars(trim($_POST["email"]));
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $emailErr = "Invalid email format";
-        }
     }
 
-    // Validate password
     if (empty($_POST["pwd"])) {
         $pwdErr = "Password is required";
     } else {
-        $pwd = htmlspecialchars(trim($_POST["pwd"]));
-        if (strlen($pwd) < 6) {
-            $pwdErr = "Password must be at least 6 characters long";
-        }
+        $pwd = $_POST["pwd"];  // Don't trim or escape password
     }
 
-    // If no errors, insert into database
-    if (empty($nameErr) && empty($emailErr) && empty($ageErr) && empty($pwdErr)) {
-        // Database credentials
-        $servername = "mysql";
-        $username = "root";
-        $password = "password"; 
-        $database = "users";
-        
-        
-        $conn = new mysqli($servername, $username, $password, $database);
-
-
+    if (empty($emailErr) && empty($pwdErr)) {
+        $conn = new mysqli("mysql", "root", "password", "users");
         if ($conn->connect_error) {
-            die("<p>Connection failed: " . $conn->connect_error . "</p>");
+            die("Connection failed: " . $conn->connect_error);
         }
 
-        // hash password
-        $hashedPwd = password_hash($pwd, PASSWORD_DEFAULT);
-
-        // prepare and execute insert statement
-        $stmt = $conn->prepare("SELECT * FROM user_info WHERE email = ? and PASSWORD = ?");
-        $stmt->bind_param("ss", $email, $hashedPwd);
-
+        $stmt = $conn->prepare("SELECT id, name, password FROM user_info WHERE email = ?");
+        $stmt->bind_param("s", $email);
         $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->store_result();
 
-        if ($result->num_rows === 0)
-        {
-        
-            $url = "users.php?a=1";
-            header('Location: '.$url);
-            die();
+        if ($stmt->num_rows == 1) {
+            $stmt->bind_result($id, $name, $hashedPwd);
+            $stmt->fetch();
 
+            if (password_verify($pwd, $hashedPwd)) {
+              
+                $_SESSION["LOGGEDIN"] = true;
+                $_SESSION["ID"] = $id;
+                $_SESSION["USERNAME"] = $name;
+
+                header("Location: users.php");
+                exit;
+            } else {
+                $pwdErr = "Incorrect password";
+            }
         } else {
-            echo "<p style='color: red;'>Error: " . $stmt->error . "</p>";
+            $emailErr = "Email not found";
         }
 
         $stmt->close();
@@ -69,41 +52,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign up</title>
-    <style>
-        body {
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
-        .error {
-            color: #FF0000;
-        }
-        form {
-            display: inline-block;
-            text-align: left;
-            margin-top: 20px;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Login</title>
+<style>
+    body { text-align: center; font-family: Arial, sans-serif; }
+    .error { color: red; }
+    form { display: inline-block; text-align: left; margin-top: 20px; }
+</style>
 </head>
 <body>
-<h1>Login in</h1>
+<h1>Login</h1>
+<?php if (isset($_GET['registered'])) {
+    echo "<p style='color:green;'>Registration successful! Please login.</p>";
+} ?>
+<form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>">
+    <label>Email:</label><br />
+    <input type="email" name="email" value="<?php echo htmlspecialchars($email); ?>" /><br />
+    <span class="error"><?php echo $emailErr; ?></span><br />
 
-<form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
-    <label for="email">Email:</label><br>
-    <input type="text" id="email" name="email" value="<?php echo $email; ?>">
-    <span class="error">* <?php echo $emailErr; ?></span><br><br>
+    <label>Password:</label><br />
+    <input type="password" name="pwd" /><br />
+    <span class="error"><?php echo $pwdErr; ?></span><br />
 
-    <label for="pwd">Password:</label><br>
-    <input type="password" id="pwd" name="pwd" value="<?php echo $pwd; ?>">
-    <span class="error">* <?php echo $pwdErr; ?></span><br><br>
+    <input type="submit" name="login" value="Login" />
 
-    <input type="submit" value="Submit">
 </form>
-
+<p><a href="sighnUp.php">Don't have an account? Sign up here</a></p>
 </body>
 </html>
