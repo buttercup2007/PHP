@@ -1,44 +1,9 @@
 <?php
-session_start();
-
-// Error- en invoervariabelen
 $nameErr = $emailErr = $ageErr = $pwdErr = "";
 $name = $email = $age = $pwd = "";
-$feedback = "";
-$isEdit = isset($_GET['edit']); // Als bewerkingsmodus actief is
 
-// Verbinding maken
-$servername = "mysql";
-$username = "root";
-$password = "password";
-$database = "users";
-
-$conn = new mysqli($servername, $username, $password, $database);
-if ($conn->connect_error) {
-    die("<p>Connection failed: " . $conn->connect_error . "</p>");
-}
-
-// Bestaande data ophalen als we gaan bewerken
-if ($isEdit && isset($_GET['id'])) {
-    $stmt = $conn->prepare("SELECT id, name, email, age FROM user_info WHERE id = ?");
-    $stmt->bind_param("i", $_GET['id']);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($row = $result->fetch_assoc()) {
-        $name = $row['name'];
-        $email = $row['email'];
-        $age = $row['age'];
-        $_SESSION['edit_id'] = $row['id']; // Opslaan voor latere verwerking
-    } else {
-        $feedback = "Gebruiker niet gevonden.";
-    }
-    $stmt->close();
-}
-
-// Bij verzenden formulier
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
-    // Validatie
+  
     if (empty($_POST["name"])) {
         $nameErr = "Name is required";
     } else {
@@ -66,102 +31,84 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 
-    if (!$isEdit) { // Alleen bij registratie wachtwoord vragen
-        if (empty($_POST["pwd"])) {
-            $pwdErr = "Password is required";
-        } else {
-            $pwd = htmlspecialchars(trim($_POST["pwd"]));
-            if (strlen($pwd) < 6) {
-                $pwdErr = "Password must be at least 6 characters long";
-            }
+    if (empty($_POST["pwd"])) {
+        $pwdErr = "Password is required";
+    } else {
+        $pwd = htmlspecialchars(trim($_POST["pwd"]));
+        if (strlen($pwd) < 6) {
+            $pwdErr = "Password must be at least 6 characters long";
         }
     }
 
-    // Geen fouten
-    if (empty($nameErr) && empty($emailErr) && empty($ageErr) && ($isEdit || empty($pwdErr))) {
-        if ($isEdit && isset($_SESSION['edit_id'])) {
-            // UPDATE query
-            $stmt = $conn->prepare("UPDATE user_info SET name = ?, email = ?, age = ? WHERE id = ?");
-            $stmt->bind_param("ssii", $name, $email, $age, $_SESSION['edit_id']);
+    if (empty($nameErr) && empty($emailErr) && empty($ageErr) && empty($pwdErr)) {
+       
+        $conn = new mysqli("mysql", "root", "password", "users");
+        if ($conn->connect_error) {
+            die("Connection failed: " . $conn->connect_error);
+        }
 
-            if ($stmt->execute()) {
-                $feedback = "Gegevens succesvol bijgewerkt!";
-            } else {
-                $feedback = "Fout bij bijwerken: " . $stmt->error;
-            }
-            $stmt->close();
+       
+        $checkStmt = $conn->prepare("SELECT id FROM user_info WHERE email = ?");
+        $checkStmt->bind_param("s", $email);
+        $checkStmt->execute();
+        $checkStmt->store_result();
+        if ($checkStmt->num_rows > 0) {
+            $emailErr = "Email is already registered";
         } else {
-            // Nieuw account aanmaken
+            
             $hashedPwd = password_hash($pwd, PASSWORD_DEFAULT);
             $stmt = $conn->prepare("INSERT INTO user_info (name, email, age, password) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("ssis", $name, $email, $age, $hashedPwd);
 
             if ($stmt->execute()) {
-                header("Location: users.php?a=1");
-                exit();
+                
+                header("Location: loginPage.php?registered=1");
+                exit;
             } else {
-                $feedback = "Fout bij registratie: " . $stmt->error;
+                echo "<p style='color:red'>Error: " . $stmt->error . "</p>";
             }
             $stmt->close();
         }
+        $checkStmt->close();
+        $conn->close();
     }
 }
-
-$conn->close();
 ?>
+
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title><?php echo $isEdit ? 'Wijzig Gegevens' : 'Sign up'; ?></title>
-    <style>
-        body {
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
-        .error {
-            color: red;
-        }
-        form {
-            display: inline-block;
-            text-align: left;
-            margin-top: 20px;
-        }
-        .success {
-            color: green;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign Up</title>
+<style>
+    body { text-align: center; font-family: Arial, sans-serif; }
+    .error { color: red; }
+    form { display: inline-block; text-align: left; margin-top: 20px; }
+</style>
 </head>
 <body>
+<h1>Sign Up</h1>
+<form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>">
+    <label>Name:</label><br />
+    <input type="text" name="name" value="<?php echo htmlspecialchars($name); ?>" /><br />
+    <span class="error"><?php echo $nameErr; ?></span><br />
 
-<h1><?php echo $isEdit ? 'Wijzig jouw gegevens' : 'Registreren'; ?></h1>
+    <label>Email:</label><br />
+    <input type="email" name="email" value="<?php echo htmlspecialchars($email); ?>" /><br />
+    <span class="error"><?php echo $emailErr; ?></span><br />
 
-<?php if ($feedback): ?>
-    <p class="<?php echo strpos($feedback, 'succes') !== false ? 'success' : 'error'; ?>"><?php echo $feedback; ?></p>
-<?php endif; ?>
+    <label>Age:</label><br />
+    <input type="number" name="age" value="<?php echo htmlspecialchars($age); ?>" /><br />
+    <span class="error"><?php echo $ageErr; ?></span><br />
 
-<form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]) . ($isEdit ? '?edit=1&id=' . $_GET['id'] : ''); ?>" method="post">
+    <label>Password:</label><br />
+    <input type="password" name="pwd" /><br />
+    <span class="error"><?php echo $pwdErr; ?></span><br />
 
-    <label for="email">Email:</label><br>
-    <input type="text" id="email" name="email" value="<?php echo $email; ?>">
-    <span class="error">* <?php echo $emailErr; ?></span><br><br>
-
-    <?php if (!$isEdit): ?>
-        <label for="pwd">Password:</label><br>
-        <input type="password" id="pwd" name="pwd" value="<?php echo $pwd; ?>">
-        <span class="error">* <?php echo $pwdErr; ?></span><br><br>
-    <?php endif; ?>
-
-    <label for="age">Age:</label><br>
-    <input type="number" id="age" name="age" value="<?php echo $age; ?>">
-    <span class="error">* <?php echo $ageErr; ?></span><br><br>
-
-    <label for="name">Name:</label><br>
-    <input type="text" id="name" name="name" value="<?php echo $name; ?>">
-    <span class="error">* <?php echo $nameErr; ?></span><br><br>
-
-    <input type="submit" value="<?php echo $isEdit ? 'Bijwerken' : 'Registreren'; ?>">
+    <input type="submit" value="Register" />
 </form>
-
+<p><a href="loginPage.php">Already have an account? Log in here</a></p>
 </body>
 </html>
+
